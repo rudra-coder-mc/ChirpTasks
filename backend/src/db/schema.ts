@@ -8,6 +8,11 @@ export const users = sqliteTable(
     id: integer('id').primaryKey({ autoIncrement: true }), // Auto-incrementing primary key
     name: text('name').notNull(),
     email: text('email').notNull().unique(), // Unique constraint on email
+    password: text('password').notNull(),
+    role: text('role').notNull().default('user'),
+
+    resetPasswordToken: text('reset_password_token'),
+    resetPasswordExpires: integer('reset_password_expires', { mode: 'timestamp_ms' }),
 
     createdAt: integer('created_at', { mode: 'timestamp_ms' }) // Store as JS Date object (milliseconds)
       .notNull()
@@ -26,5 +31,5 @@ export const users = sqliteTable(
 );
 
 // Define types for easy use in services/controllers
-export type User = typeof users.$inferSelect; // Type for selecting users
+export type User = typeof users.$inferSelect & { roles?: string[] }; // Type for selecting users
 export type NewUser = typeof users.$inferInsert; // Type for inserting users
