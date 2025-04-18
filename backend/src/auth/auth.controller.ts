@@ -46,7 +46,7 @@ export class AuthController {
 
   @Post('register')
   async register(@Body() authDto: AuthDto) {
-    return await this.authService.register(authDto);
+    return this.authService.register(authDto);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -55,7 +55,7 @@ export class AuthController {
     @Request() req: { user: User },
     @Body('password') password: string,
   ) {
-    return await this.authService.changePassword(req.user.id, password);
+    return this.authService.changePassword(req.user.id, password);
   }
 
   @Post('forgot-password')

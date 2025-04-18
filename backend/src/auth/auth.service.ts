@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException, Inject } from '@nestjs/common';
+import { Injectable, UnauthorizedException, Inject, HttpException, HttpStatus } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthDto } from './dto/auth.dto';
@@ -6,6 +6,7 @@ import * as bcrypt from 'bcrypt';
 import { DB_PROVIDER_TOKEN, DrizzleDatabase, User, users } from '../db';
 import { eq } from 'drizzle-orm';
 import { v4 as uuidv4 } from 'uuid';
+import { Response } from '../utils/response';
 
 @Injectable()
 export class AuthService {
@@ -16,43 +17,41 @@ export class AuthService {
   ) {}
 
   async validateUser(authDto: AuthDto): Promise<User | undefined> {
-    console.log(`Validating user: ${authDto.username}`);
-    let user: User | undefined;
     try {
-      user = this.db
+      const user = this.db
         .select()
         .from(users)
         .where(eq(users.email, authDto.username))
         .get();
-      console.log(`User found: ${user?.email}`);
+
+      if (!user) {
+        return undefined;
+      }
+
+      const isPasswordValid = await bcrypt.compare(
+        authDto.password,
+        user.password,
+      );
+
+      if (!isPasswordValid) {
+        return undefined;
+      }
+
+      return user;
     } catch (error) {
-      console.error(`Error validating user: ${error}`);
-      return undefined;
+      throw new UnauthorizedException('Invalid credentials');
     }
-
-    if (!user) {
-      console.log(`User not found: ${authDto.username}`);
-      return undefined;
-    }
-
-    const isPasswordValid = await bcrypt.compare(
-      authDto.password,
-      user.password,
-    );
-
-    if (!isPasswordValid) {
-      return undefined;
-    }
-
-    //const { password, ...result } = user;
-    return user;
   }
 
   async login(user: User) {
-    const payload = { username: user.name, sub: user.id, roles: [user.role] };
-    return {
-      access_token: await this.jwtService.signAsync(payload),
-      refresh_token: await this.jwtService.signAsync(
+    try {
+      const payload = {
+        username: user.name,
+        email: user.email,
+        sub: user.id,
+        role: user.role,
+      };
+      const refreshToken = await this.jwtService.signAsync(
         { ...payload, type: 'refresh' },
         {
           secret: this.configService.get<string>('JWT_REFRESH_TOKEN_SECRET'),
@@ -60,54 +59,69 @@ export class AuthService {
             'JWT_REFRESH_TOKEN_EXPIRATION_TIME',
           ),
         },
-      ),
-    };
+      );
+
+      this.db
+        .update(users)
+        .set({ refreshToken: refreshToken })
+        .where(eq(users.id, user.id))
+        .run();
+
+      return Response.success('Login successful', {
+        access_token: await this.jwtService.signAsync(payload),
+        refresh_token: refreshToken,
+      });
+    } catch (error) {
+      return Response.error('Login failed', null, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
   async refreshToken(user: User) {
-    const payload = { username: user.name, sub: user.id, roles: [user.role] };
-    return {
-      access_token: await this.jwtService.signAsync(payload),
-    };
+    try {
+      const payload = {
+        username: user.name,
+        email: user.email,
+        sub: user.id,
+        role: user.role,
+      };
+
+      return Response.success('Refresh token successful', {
+        access_token: await this.jwtService.signAsync(payload),
+      });
+    } catch (error) {
+      return Response.error('Refresh token failed', null, HttpStatus.INTERNAL_SERVER_ERROR);
+    }
   }
 
-  assignRole(userId: number, role: string) {
+  async assignRole(userId: number, role: string) {
     try {
       this.db
         .update(users)
         .set({ role: role })
         .where(eq(users.id, userId))
         .run();
-      console.log(`Role assigned successfully to user ${userId}: ${role}`);
-      return { message: 'Role assigned successfully' };
+      return Response.success('Role assigned successfully', { message: 'Role assigned successfully' });
     } catch (error: any) {
-      console.error(`Error assigning role to user ${userId}: ${error}`);
-      throw new Error('Failed to assign role');
+      return Response.error('Failed to assign role', null, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
   async register(authDto: AuthDto) {
     try {
-      if (!authDto?.password || !authDto?.username) {
-        return new UnauthorizedException('Password or user is required');
-      }
-
       const hashedPassword = await bcrypt.hash(authDto.password, 10);
 
-      const data = this.db
+      this.db
         .insert(users)
         .values({
           email: authDto.username,
           password: hashedPassword,
           name: authDto.username,
         })
-        .run();
-      console.log(`User registered successfully: ${authDto.username}`);
+        .get();
 
-      return { message: 'User registered successfully', data };
+      return Response.success('User registered successfully', { message: 'User registered successfully' });
     } catch (dbError) {
-      console.error(`Error inserting user into database: ${dbError}`);
-      return new Error('Failed to register user');
+      return Response.error('Failed to register user', null, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
@@ -119,101 +133,94 @@ export class AuthService {
         .set({ password: hashedPassword })
         .where(eq(users.id, userId))
         .run();
-      console.log(`Password changed successfully for user ${userId}`);
-      return { message: 'Password changed successfully' };
+      return Response.success('Password changed successfully', { message: 'Password changed successfully' });
     } catch (error: any) {
-      console.error(`Error changing password for user ${userId}: ${error}`);
-      throw new Error('Failed to change password');
+      return Response.error('Failed to change password', null, HttpStatus.INTERNAL_SERVER_ERROR);
     }
   }
 
-  forgotPassword(email: string) {
-    let user: User | undefined;
+  async forgotPassword(email: string) {
     try {
-      user = this.db.select().from(users).where(eq(users.email, email)).get();
+      let user: User | undefined;
+      try {
+        user = this.db.select().from(users).where(eq(users.email, email)).get();
+      } catch (error) {
+        return Response.error('Failed to find user', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      if (!user) {
+        throw new UnauthorizedException('User not found');
+      }
+
+      const resetPasswordToken = uuidv4();
+      const resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
+
+      try {
+        this.db
+          .update(users)
+          .set({ resetPasswordToken, resetPasswordExpires })
+          .where(eq(users.id, user.id))
+          .run();
+      } catch (error: any) {
+        return Response.error('Failed to update reset password token', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      // TODO: Send email with reset password link
+      // this.logger.log(
+      //   `Reset password link: http://localhost:3000/auth/reset-password?token=${resetPasswordToken}`,
+      // );
+
+      return Response.success('Forgot password email sent successfully', { message: 'Forgot password email sent successfully' });
     } catch (error) {
-      console.error(`Error finding user with email ${email}: ${error}`);
-      throw new Error('Failed to find user');
+      return Response.error(error.message, null, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    if (!user) {
-      throw new UnauthorizedException('User not found');
-    }
-
-    const resetPasswordToken = uuidv4();
-    const resetPasswordExpires = new Date(Date.now() + 3600000); // 1 hour
-
-    try {
-      this.db
-        .update(users)
-        .set({ resetPasswordToken, resetPasswordExpires })
-        .where(eq(users.id, user.id))
-        .run();
-      console.log(`Reset password token updated for user ${user.id}`);
-    } catch (error: any) {
-      console.error(
-        `Error updating reset password token for user ${user.id}: ${error}`,
-      );
-      throw new Error('Failed to update reset password token');
-    }
-
-    // TODO: Send email with reset password link
-    console.log(
-      `Reset password link: http://localhost:3000/auth/reset-password?token=${resetPasswordToken}`,
-    );
-
-    return { message: 'Forgot password email sent successfully' };
   }
 
   async resetPassword(resetPasswordToken: string, password: string) {
-    let user: User | undefined;
     try {
-      user = this.db
-        .select()
-        .from(users)
-        .where(eq(users.resetPasswordToken, resetPasswordToken))
-        .get();
+      let user: User | undefined;
+      try {
+        user = this.db
+          .select()
+          .from(users)
+          .where(eq(users.resetPasswordToken, resetPasswordToken))
+          .get();
+      } catch (error) {
+        return Response.error('Failed to find user with reset token', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      if (!user) {
+        throw new UnauthorizedException('Invalid reset password token');
+      }
+
+      if (user.resetPasswordExpires! < new Date()) {
+        throw new UnauthorizedException('Reset password token has expired');
+      }
+
+      let hashedPassword: string;
+      try {
+        hashedPassword = await bcrypt.hash(password, 10);
+      } catch (hashingError) {
+        return Response.error('Failed to hash password', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      try {
+        this.db
+          .update(users)
+          .set({
+            password: hashedPassword,
+            resetPasswordToken: null,
+            resetPasswordExpires: null,
+          })
+          .where(eq(users.id, user.id))
+          .run();
+      } catch (error: any) {
+        return Response.error('Failed to reset password', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      }
+
+      return Response.success('Password reset successfully', { message: 'Password reset successfully' });
     } catch (error) {
-      console.error(
-        `Error finding user with reset token ${resetPasswordToken}: ${error}`,
-      );
-      throw new Error('Failed to find user with reset token');
+      return Response.error(error.message, null, HttpStatus.INTERNAL_SERVER_ERROR);
     }
-
-    if (!user) {
-      throw new UnauthorizedException('Invalid reset password token');
-    }
-
-    if (user.resetPasswordExpires! < new Date()) {
-      throw new UnauthorizedException('Reset password token has expired');
-    }
-
-    let hashedPassword: string;
-    try {
-      hashedPassword = await bcrypt.hash(password, 10);
-    } catch (hashingError) {
-      console.error(
-        `Error hashing password for user ${user.id}: ${hashingError}`,
-      );
-      throw new Error('Failed to hash password');
-    }
-
-    try {
-      this.db
-        .update(users)
-        .set({
-          password: hashedPassword,
-          resetPasswordToken: null,
-          resetPasswordExpires: null,
-        })
-        .where(eq(users.id, user.id))
-        .run();
-      console.log(`Password reset successfully for user ${user.id}`);
-    } catch (error: any) {
-      console.error(`Error updating password for user ${user.id}: ${error}`);
-      throw new Error('Failed to reset password');
-    }
-
-    return { message: 'Password reset successfully' };
   }
 }

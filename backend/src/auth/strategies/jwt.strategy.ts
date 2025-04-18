@@ -7,7 +7,10 @@ import { eq } from 'drizzle-orm';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(private configService: ConfigService, @Inject(DB_PROVIDER_TOKEN) private db: DrizzleDatabase) {
+  constructor(
+    private configService: ConfigService,
+    @Inject(DB_PROVIDER_TOKEN) private db: DrizzleDatabase,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -16,10 +19,14 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any): Promise<User | null> {
-    const user = await this.db.select().from(users).where(eq(users.id, payload.sub)).get();
+    const user = this.db
+      .select()
+      .from(users)
+      .where(eq(users.id, payload.sub))
+      .get();
     if (!user) {
       return null;
     }
-    return { ...user, roles: [user.role] };
+    return user;
   }
 }

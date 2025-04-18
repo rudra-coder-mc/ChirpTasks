@@ -3,13 +3,13 @@ import { FactoryProvider, Logger } from '@nestjs/common';
 import { drizzle, BetterSQLite3Database } from 'drizzle-orm/better-sqlite3';
 import * as Database from 'better-sqlite3';
 import { ConfigService } from '@nestjs/config';
-import * as schema from './schema'; // Import all schema exports
+import * as schema from './schema';
 import { DB_PROVIDER_TOKEN } from './db.constants';
 
 export const dbProvider: FactoryProvider<BetterSQLite3Database<typeof schema>> =
   {
     provide: DB_PROVIDER_TOKEN,
-    inject: [ConfigService], // Inject ConfigService to access env vars
+    inject: [ConfigService],
     useFactory: (configService: ConfigService) => {
       const logger = new Logger('DrizzleProvider');
       const dbPath = configService.get<string>('DATABASE_URL');
@@ -20,11 +20,10 @@ export const dbProvider: FactoryProvider<BetterSQLite3Database<typeof schema>> =
       logger.log(`Connecting to SQLite database at: ${dbPath}`);
 
       try {
-        const sqlite = new Database(dbPath /* { verbose: console.log } */); // Optional: verbose logging from better-sqlite3
+        const sqlite = new Database(dbPath);
         // Optional: Enable Write-Ahead Logging for better concurrency
         sqlite.pragma('journal_mode = WAL;');
 
-        // Pass the schema to drizzle. 'logger: true' enables Drizzle's query logging
         const db = drizzle(sqlite, { schema, logger: true });
 
         logger.log('Drizzle ORM initialized successfully with SQLite.');
