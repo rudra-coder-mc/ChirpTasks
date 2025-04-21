@@ -9,11 +9,19 @@ export class Response<T> {
     this.data = data;
   }
 
-  static success<T>(message: string, data: T, statusCode: number = 200): Response<T> {
+  static success<T>(
+    message: string,
+    data: T,
+    statusCode: number = 200,
+  ): Response<T> {
     return new Response(statusCode, message, data);
   }
 
-  static error<T>(message: string, data: T , statusCode: number = 400): Response<T> {
+  static error<T>(
+    message: string,
+    data: T,
+    statusCode: number = 400,
+  ): Response<T> {
     return new Response(statusCode, message, data);
   }
 }

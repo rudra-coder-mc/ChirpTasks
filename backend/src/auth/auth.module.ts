@@ -8,7 +8,6 @@ import { RefreshTokenStrategy } from './strategies/refresh-token.strategy';
 import { RolesGuard } from './guards/roles.guard';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { DbModule } from '../db/db.module';
-import { DB_PROVIDER_TOKEN } from '../db/db.constants';
 import { LocalStrategy } from './strategies/local.strategy';
 
 @Module({
@@ -17,10 +16,12 @@ import { LocalStrategy } from './strategies/local.strategy';
     PassportModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
-      useFactory: async (configService: ConfigService) => ({
+      useFactory: (configService: ConfigService) => ({
         secret: configService.get<string>('JWT_ACCESS_TOKEN_SECRET'),
         signOptions: {
-          expiresIn: configService.get<string>('JWT_ACCESS_TOKEN_EXPIRATION_TIME'),
+          expiresIn: configService.get<string>(
+            'JWT_ACCESS_TOKEN_EXPIRATION_TIME',
+          ),
         },
       }),
       inject: [ConfigService],
@@ -28,7 +29,13 @@ import { LocalStrategy } from './strategies/local.strategy';
     DbModule,
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtStrategy, RefreshTokenStrategy, RolesGuard, LocalStrategy],
+  providers: [
+    AuthService,
+    JwtStrategy,
+    RefreshTokenStrategy,
+    RolesGuard,
+    LocalStrategy,
+  ],
   exports: [AuthService],
 })
 export class AuthModule {}

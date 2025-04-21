@@ -5,9 +5,10 @@ import { AuthService } from '../auth.service';
 import { AuthDto } from '../dto/auth.dto';
 
 @Injectable()
-export class LocalStrategy extends PassportStrategy(Strategy) {
+export class LocalStrategy extends PassportStrategy(Strategy, 'local') {
   constructor(private authService: AuthService) {
-    super()
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-call
+    super();
   }
 
   async validate(username: string, password: string): Promise<any> {
@@ -17,7 +18,7 @@ export class LocalStrategy extends PassportStrategy(Strategy) {
 
     const user = await this.authService.validateUser(authDto);
     if (!user) {
-      throw new UnauthorizedException();
+      throw new UnauthorizedException('Invalid credentials');
     }
     return user;
   }

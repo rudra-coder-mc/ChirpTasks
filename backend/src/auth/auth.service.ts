@@ -1,4 +1,9 @@
-import { Injectable, UnauthorizedException, Inject, HttpException, HttpStatus } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  Inject,
+  HttpStatus,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { AuthDto } from './dto/auth.dto';
@@ -39,6 +44,7 @@ export class AuthService {
 
       return user;
     } catch (error) {
+      console.log('Error in validateUser:', error);
       throw new UnauthorizedException('Invalid credentials');
     }
   }
@@ -72,7 +78,11 @@ export class AuthService {
         refresh_token: refreshToken,
       });
     } catch (error) {
-      return Response.error('Login failed', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Login failed',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -89,20 +99,27 @@ export class AuthService {
         access_token: await this.jwtService.signAsync(payload),
       });
     } catch (error) {
-      return Response.error('Refresh token failed', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Refresh token failed',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
-
-  async assignRole(userId: number, role: string) {
+  assignRole(userId: number, role: string) {
     try {
       this.db
         .update(users)
         .set({ role: role })
         .where(eq(users.id, userId))
         .run();
-      return Response.success('Role assigned successfully', { message: 'Role assigned successfully' });
+      return Response.success('Role assigned successfully', null);
     } catch (error: any) {
-      return Response.error('Failed to assign role', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Failed to assign role',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -119,9 +136,13 @@ export class AuthService {
         })
         .get();
 
-      return Response.success('User registered successfully', { message: 'User registered successfully' });
-    } catch (dbError) {
-      return Response.error('Failed to register user', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.success('User registered successfully', null);
+    } catch (error) {
+      return Response.error(
+        'Failed to register user',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -133,19 +154,27 @@ export class AuthService {
         .set({ password: hashedPassword })
         .where(eq(users.id, userId))
         .run();
-      return Response.success('Password changed successfully', { message: 'Password changed successfully' });
+      return Response.success('Password changed successfully', null);
     } catch (error: any) {
-      return Response.error('Failed to change password', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Failed to change password',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
-  async forgotPassword(email: string) {
+  forgotPassword(email: string) {
     try {
       let user: User | undefined;
       try {
         user = this.db.select().from(users).where(eq(users.email, email)).get();
       } catch (error) {
-        return Response.error('Failed to find user', null, HttpStatus.INTERNAL_SERVER_ERROR);
+        return Response.error(
+          'Failed to find user',
+          error,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       if (!user) {
@@ -162,7 +191,11 @@ export class AuthService {
           .where(eq(users.id, user.id))
           .run();
       } catch (error: any) {
-        return Response.error('Failed to update reset password token', null, HttpStatus.INTERNAL_SERVER_ERROR);
+        return Response.error(
+          'Failed to update reset password token',
+          error,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       // TODO: Send email with reset password link
@@ -170,9 +203,13 @@ export class AuthService {
       //   `Reset password link: http://localhost:3000/auth/reset-password?token=${resetPasswordToken}`,
       // );
 
-      return Response.success('Forgot password email sent successfully', { message: 'Forgot password email sent successfully' });
+      return Response.success('Forgot password email sent successfully', null);
     } catch (error) {
-      return Response.error(error.message, null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Failed to forgot password',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 
@@ -186,7 +223,11 @@ export class AuthService {
           .where(eq(users.resetPasswordToken, resetPasswordToken))
           .get();
       } catch (error) {
-        return Response.error('Failed to find user with reset token', null, HttpStatus.INTERNAL_SERVER_ERROR);
+        return Response.error(
+          'Failed to find user with reset token',
+          error,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       if (!user) {
@@ -200,8 +241,12 @@ export class AuthService {
       let hashedPassword: string;
       try {
         hashedPassword = await bcrypt.hash(password, 10);
-      } catch (hashingError) {
-        return Response.error('Failed to hash password', null, HttpStatus.INTERNAL_SERVER_ERROR);
+      } catch (error) {
+        return Response.error(
+          'Failed to hash password',
+          error,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
       try {
@@ -215,12 +260,20 @@ export class AuthService {
           .where(eq(users.id, user.id))
           .run();
       } catch (error: any) {
-        return Response.error('Failed to reset password', null, HttpStatus.INTERNAL_SERVER_ERROR);
+        return Response.error(
+          'Failed to reset password',
+          error,
+          HttpStatus.INTERNAL_SERVER_ERROR,
+        );
       }
 
-      return Response.success('Password reset successfully', { message: 'Password reset successfully' });
+      return Response.success('Password reset successfully', null);
     } catch (error) {
-      return Response.error(error.message, null, HttpStatus.INTERNAL_SERVER_ERROR);
+      return Response.error(
+        'Failed to reset password',
+        error,
+        HttpStatus.INTERNAL_SERVER_ERROR,
+      );
     }
   }
 }

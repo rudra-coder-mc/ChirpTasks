@@ -14,4 +14,9 @@ async function bootstrap() {
   await app.listen(process.env.PORT ?? 4005);
   logger.log(`Application is running on: ${await app.getUrl()}`);
 }
-bootstrap();
+
+// Handle potential errors during bootstrap
+bootstrap().catch((err) => {
+  logger.error('Error during application bootstrap', err);
+  process.exit(1); // Optional: exit if bootstrap fails
+});

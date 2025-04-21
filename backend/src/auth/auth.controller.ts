@@ -9,6 +9,7 @@ import {
 import { AuthService } from './auth.service';
 import { AuthDto } from './dto/auth.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { Role } from './enums/role.enum';
 import { RefreshTokenGuard } from './guards/refresh-token.guard';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { SetMetadata } from '@nestjs/common';
@@ -38,7 +39,7 @@ export class AuthController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @SetMetadata('roles', ['admin'])
+  @SetMetadata('roles', [Role.ADMIN])
   @Post('assign-role')
   assignRole(@Request() req: { user: User }, @Body('role') role: string) {
     return this.authService.assignRole(req.user.id, role);
