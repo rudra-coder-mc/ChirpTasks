@@ -106,6 +106,7 @@ export class AuthService {
       );
     }
   }
+
   assignRole(userId: number, role: string) {
     try {
       this.db
